@@ -18,27 +18,55 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Accept Android SDK licenses
-        shell: bash
-        run: |
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+        run: yes | sdkmanager --licenses || true
 
       - name: Install Android SDK packages
-        shell: bash
-        run: |
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Unzip theme project
         run: |
           rm -rf theme
           mkdir theme
           unzip -q Fluffy_Puppy_Android_Source.zip -d theme
-          echo "Project contents:"
-          find theme -maxdepth 2 -type f | head -50
+
+      - name: Fix duplicate app_name
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          files = list(Path("theme").rglob("res/values/strings.xml"))
+
+          for f in files:
+              text = f.read_text(encoding="utf-8")
+              pattern = r'<string\s+name=["'\'']app_name["'\''][^>]*>.*?</string>'
+              matches = list(re.finditer(pattern, text, flags=re.DOTALL))
+
+              if len(matches) > 1:
+                  first = True
+
+                  def keep_one(match):
+                      global first
+                      if first:
+                          first = False
+                          return match.group(0)
+                      return ""
+
+                  text = re.sub(
+                      pattern,
+                      keep_one,
+                      text,
+                      flags=re.DOTALL
+                  )
+
+                  f.write_text(text, encoding="utf-8")
+                  print("Fixed:", f)
+
+          PY
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -54,4 +82,3 @@ jobs:
         with:
           name: Fluffy-Puppy-APK
           path: theme/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
