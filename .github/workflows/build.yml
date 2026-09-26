@@ -18,24 +18,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Accept Android SDK licenses
+        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Unzip theme project
         run: |
           rm -rf theme
           mkdir theme
           unzip -q Fluffy_Puppy_Android_Source.zip -d theme
+          echo "Project contents:"
+          find theme -maxdepth 2 -type f | head -50
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -46,8 +49,9 @@ jobs:
         working-directory: theme
         run: gradle :app:assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Fluffy-Puppy-APK
           path: theme/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
