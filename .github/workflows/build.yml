@@ -18,14 +18,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Unzip theme project
         run: |
@@ -35,37 +34,34 @@ jobs:
 
       - name: Fix duplicate app_name
         run: |
-          python3 <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          import re
+          import xml.etree.ElementTree as ET
 
-          files = list(Path("theme").rglob("res/values/strings.xml"))
+          for f in Path("theme").rglob("res/values/strings.xml"):
+              tree = ET.parse(f)
+              root = tree.getroot()
 
-          for f in files:
-              text = f.read_text(encoding="utf-8")
-              pattern = r'<string\s+name=["'\'']app_name["'\''][^>]*>.*?</string>'
-              matches = list(re.finditer(pattern, text, flags=re.DOTALL))
+              found = False
+              changed = False
 
-              if len(matches) > 1:
-                  first = True
+              for element in list(root):
+                  if element.tag == "string" and element.get("name") == "app_name":
+                      if not found:
+                          found = True
+                      else:
+                          root.remove(element)
+                          changed = True
 
-                  def keep_one(match):
-                      global first
-                      if first:
-                          first = False
-                          return match.group(0)
-                      return ""
-
-                  text = re.sub(
-                      pattern,
-                      keep_one,
-                      text,
-                      flags=re.DOTALL
+              if changed:
+                  tree.write(
+                      f,
+                      encoding="utf-8",
+                      xml_declaration=True
                   )
-
-                  f.write_text(text, encoding="utf-8")
-                  print("Fixed:", f)
-
+                  print("Fixed duplicate app_name:", f)
+              else:
+                  print("Checked:", f)
           PY
 
       - name: Set up Gradle
@@ -75,10 +71,10 @@ jobs:
 
       - name: Build APK
         working-directory: theme
-        run: gradle :app:assembleDebug
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Fluffy-Puppy-APK
-          path: theme/app/build/outputs/apk/debug/app-debug.apk
+          path: theme/app/build/
